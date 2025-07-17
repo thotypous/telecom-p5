@@ -1,0 +1,25 @@
+name: CI Grader
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: 'python:3.13'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Poetry
+        run: |
+          pip install pipx
+          pipx install poetry
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: Run grader
+        env:
+          # Passa o token do GitHub para o script, necessário para a notificação
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./run-grader

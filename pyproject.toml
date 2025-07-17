@@ -1,0 +1,18 @@
+[tool.poetry]
+package-mode = false
+
+[project]
+name = "ieee80211ag"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy (>=2.3.1,<3.0.0)",
+    "scipy (>=1.16.0,<2.0.0)",
+    "matplotlib (>=3.10.3,<4.0.0)",
+    "viterbi (>=0.0.4,<0.0.5)",
+    "requests (>=2.32.4,<3.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

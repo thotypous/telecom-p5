@@ -1,0 +1,43 @@
+#!/usr/bin/env -S poetry run python
+import os
+import re
+import json
+import requests
+import unittest
+
+def run_tests():
+    scores = {'descramble': 1, 'viterbi': 1, 'deinterleaver': 1, 'demapper': 1, 'packet_detector': 1, 'freq_offset': 1, 'long_symbol_corr': 1, 'ofdm_receiver': 1, 'integration': 2}
+
+    loader = unittest.TestLoader()
+    suite = loader.discover('.')
+    runner = unittest.TextTestRunner()
+    result = runner.run(suite)
+
+    failed_test_names = set(re.match(r'tests\.test_(\w+)', failed_test.id()).group(1) for failed_test, _ in result.failures + result.errors)
+    for test_name in failed_test_names:
+        scores[test_name] = 0
+    return scores
+
+def notify():
+    if not os.getenv('GITHUB_TOKEN'):
+        # não notificar se não estiver dentro do GitHub CI
+        return
+
+    r = requests.get('https://telecom.matias.co.in/notas')
+    google_script_url, = re.search(r"const api = '(.*?)';", r.text).groups()
+
+    r = requests.post(google_script_url,
+        json={'repo': os.getenv('GITHUB_REPOSITORY'),
+              'token': os.getenv('GITHUB_TOKEN'),
+              'run_id': os.getenv('GITHUB_RUN_ID'),
+              })
+    print(r)
+    print(r.text)
+
+def main():
+    scores = run_tests()
+    print(json.dumps({'scores': scores}))
+    notify()
+
+if __name__ == '__main__':
+    main()
