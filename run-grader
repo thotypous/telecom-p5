@@ -1,0 +1,152 @@
+#!/usr/bin/env -S poetry run python
+import base64
+import io
+import json
+import os
+import time
+import unittest
+import uuid
+
+
+TESTS = [
+    ("Detecção de pacote", "tests.test_packet_detector", 0.75),
+    ("Deslocamento de frequência", "tests.test_freq_offset", 0.75),
+    ("Correlação do símbolo longo", "tests.test_long_symbol_corr", 0.75),
+    ("Receptor OFDM", "tests.test_ofdm_receiver", 1.25),
+    ("Demapper OFDM", "tests.test_demapper", 0.75),
+    ("Deinterleaver", "tests.test_deinterleaver", 0.5),
+    ("Viterbi", "tests.test_viterbi", 1.25),
+    ("Descrambler", "tests.test_descramble", 0.5),
+    ("Integração", "tests.test_integration", 1.5),
+]
+
+
+def main():
+    result = run_tests()
+    if not os.getenv("GITHUB_OUTPUT"):
+        print(json.dumps(result, indent=2), flush=True)
+    set_output("result", base64.b64encode(json.dumps(result).encode("utf-8")).decode("ascii"))
+    if result["status"] == "error":
+        raise SystemExit(1)
+
+
+def run_tests():
+    results = [run_test(name, module, weight) for name, module, weight in TESTS]
+    return generate_result(overall_status(results), results)
+
+
+def run_test(name, module, weight):
+    print(f"Executando {module}...", flush=True)
+    start_time = time.monotonic()
+    stream = io.StringIO()
+    suite = unittest.defaultTestLoader.loadTestsFromName(module)
+    result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
+    duration = elapsed_ms(start_time)
+    output = stream.getvalue()
+
+    if result.wasSuccessful():
+        print(f"{name}: OK", flush=True)
+        return generate_test_result(
+            name=name,
+            status="pass",
+            score=weight,
+            max_score=weight,
+            message="OK",
+            test_code=f"poetry run python -m unittest {module}",
+            duration=duration,
+        )
+
+    print(f"{name}: FAIL", flush=True)
+    has_errors = bool(result.errors)
+    return generate_test_result(
+        name=name,
+        status="error" if has_errors else "fail",
+        score=0,
+        max_score=weight,
+        message=failure_message(result, output),
+        test_code=f"poetry run python -m unittest {module}",
+        duration=duration,
+    )
+
+
+def failure_message(result, output):
+    failures = result.failures + result.errors
+    if not failures:
+        return "Falha sem detalhes capturados."
+
+    failed_names = ", ".join(failed_test.id() for failed_test, _ in failures[:3])
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    tail = "\n".join(lines[-8:])
+    if tail:
+        return f"Falharam: {failed_names}\n{tail}"
+    return f"Falharam: {failed_names}"
+
+
+def generate_result(status, results):
+    return {
+        "version": 1,
+        "status": status,
+        "max_score": max_score(),
+        "tests": results,
+    }
+
+
+def generate_test_result(name, status, score, max_score, message, test_code, duration):
+    return {
+        "name": name,
+        "status": status,
+        "score": score,
+        "max_score": max_score,
+        "message": message,
+        "test_code": test_code,
+        "filename": "",
+        "line_no": 0,
+        "duration": duration,
+    }
+
+
+def overall_status(results):
+    statuses = {result["status"] for result in results}
+    if "error" in statuses:
+        return "error"
+    if "fail" in statuses:
+        return "fail"
+    return "pass"
+
+
+def max_score():
+    return sum(weight for _, _, weight in TESTS)
+
+
+def elapsed_ms(start_time):
+    return int((time.monotonic() - start_time) * 1000)
+
+
+def to_command_value(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
+
+
+def prepare_key_value_message(key, value):
+    delimiter = f"ghadelimiter_{uuid.uuid4()}"
+    converted_value = to_command_value(value)
+    if delimiter in key:
+        raise ValueError(f'Unexpected input: name should not contain the delimiter "{delimiter}"')
+    if delimiter in converted_value:
+        raise ValueError(f'Unexpected input: value should not contain the delimiter "{delimiter}"')
+    return f"{key}<<{delimiter}{os.linesep}{converted_value}{os.linesep}{delimiter}"
+
+
+def set_output(name, value):
+    file_path = os.getenv("GITHUB_OUTPUT")
+    if file_path:
+        with open(file_path, "a", encoding="utf-8") as output_file:
+            output_file.write(prepare_key_value_message(name, value))
+            output_file.write(os.linesep)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,27 @@
+name: CI Grader
+on: push
+jobs:
+  run-autograding-tests:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-classroom[bot]'
+    container:
+      image: 'python:3.12'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Poetry
+        run: |
+          pip install pipx
+          pipx install poetry
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+      - name: Install dependencies
+        run: poetry install
+      - name: Run grader
+        id: grader
+        continue-on-error: true
+        run: ./run-grader
+      - name: Report final grade
+        uses: classroom-resources/autograding-grading-reporter@v1
+        env:
+          GRADER_RESULTS: "${{steps.grader.outputs.result}}"
+        with:
+          runners: grader
